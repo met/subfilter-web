@@ -1,0 +1,319 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Subfilter for SRT files. Learn languages with movies</title>
+<meta name="description" content="Learn foreign languages with movies. Subfilter will filter out some words from your subtitles, so you will focus more on listening and learn more.">
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/css/bootstrap.min.css" rel="stylesheet" type="text/css" integrity="sha384-giJF6kkoqNQ00vy+HMDP7azOuL0xtbfIcaT9wjKHr8RbDVddVHyTfAAsrekwKmP1" crossorigin="anonymous">
+
+<!-- https://github.com/fiduswriter/Simple-DataTables -->
+<link href="https://cdn.jsdelivr.net/npm/simple-datatables@latest/dist/style.css" rel="stylesheet" type="text/css" integrity="sha384-8Ckacg2VU1a6F7C9WWfGL3hQ0LrYBIbZ9za/dpYLtntTtGvHxrzb+uLzOwZU/Xyt" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/simple-datatables@latest" type="text/javascript" integrity="sha384-+NH1Lmhq1u8XKi1XBTaE+L8OWwUMKaIgO+1cvgDH3N31BLAwidVFIFDQSzJK//l0" crossorigin="anonymous"></script>
+
+<body class="container">
+
+<h1 class="mt-3">Subfilter - convertor for SRT files</h1>
+
+<p><strong>Do you want to learn foreign languages by watching movies with subtitles?</strong>
+Subfilter deletes some words from subtitles, so you need to focus on listening and learn more.</p>
+
+<form class="mt-1 mb-3" class="row">
+<label for="input" class="form-label">Paste your SRT here or just use prepared example:</label>
+<textarea id="input" class="form-control mt-1 mb-3" style="height:20em" lang="es">
+1
+00:00:00,498 --> 00:00:02,827
+- Here's what I love most
+about food and diet.
+
+2
+00:00:02,827 --> 00:00:06,383
+We all eat several times a day,
+and we're totally in charge
+
+3
+00:00:06,383 --> 00:00:09,427
+of what goes on our plate
+and what stays off.</textarea>
+
+<div>
+	<div id="selector-container">
+		<label for="filter-type">Select filter:</label>
+	</div>
+	<input id="btn-process" type="button" class="btn btn-primary mb-3" value="Process subtitles">
+</div>
+</form>
+
+<div id="output-area" class="collapse mb-3">
+	<h4>Filtered subtitles</h4>
+	<form class="mt-1 mb-3" class="row">
+	<label for="ouput" class="form-label">Here are your filteted subtitles, copy them to your computer:</label>
+	<textarea id="ouput" class="form-control mt-1 mb-3" style="height:20em" lang="es"></textarea>
+	</form>
+
+	<div class="row mb-3 card collapse">
+		<h4 class="card-header">Text analysis</h4>
+		<div id="text-analysis" class="card-text my-3"></div>
+	</div>
+</div>
+
+
+<footer class="text-center fst-italic pt-4">
+	<p>Created by <a href="https://twitter.com/hassmanm">Martin Hassman</a>.
+	Source code on <a href="https://github.com/met/subfilter-web">GitHub</a>. 
+	Part of <a href="https://github.com/met/subfilter">Subfilter</a> project.</p>
+</footer>
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/js/bootstrap.bundle.min.js" type="text/javascript" integrity="sha384-ygbV9kiqUc6oa4msXn9868pTtWMgiQaeYH7/t7LECLbyPA2x65Kgf80OJFdroafW" crossorigin="anonymous"></script>
+
+<script type="text/javascript">
+"use strict";
+
+let defaultFilter = "generalLatin";
+let filterListing = {
+			"generalLatin": { name: "General filter - NORMAL (recommended)", description: "General filter for languages with latin alphabet. Use it if there is not any more specified filter.", run: generalLatinNormal },
+			"generalLatinEasy": { name: "General filter - EASY", description: "General filter for languages with latin alphabet. Use it if there is not any more specified filter.", run: generalLatinEasy },
+			"generalLatinHard": { name: "General filter - HARD", description: "General filter for languages with latin alphabet. Use it if there is not any more specified filter.", run: generalLatinHard },
+	};
+
+
+function initEvents() {
+
+	document.getElementById("btn-process").onclick = function(e)  {
+		let btn = document.getElementById("btn-process");
+		btn.dataset.originalValue = btn.value;
+		btn.value = "Processing...";
+		document.getElementById("output-area").classList.add("collapse");		
+		setTimeout(processForm, 10);	// using setTimetout - for button text change in UI to happen now before processing
+		return false;
+	};
+}
+
+function initUI() {
+
+	initEvents();
+	createFilterSelector(document.getElementById("selector-container"), { "id" : "filter-type", "class" : "form-select mb-3", "aria-label": "Select filter", "style":"width:30%" }, true);
+}
+
+
+initUI();
+
+
+// Create select element for filter selection
+// and insert it inside "parent" element
+// "option" is object with attributes of "select" element  e.g. {"id": "filters", "class": "form-select mb-3" }
+// optional "includeHiddenFilters" = false | true
+function createFilterSelector(parent, options) {
+
+	const selectElem = document.createElement("select");
+	selectElem.title = "Select filter";
+
+	if (options) {
+		for (const item in options) {
+			selectElem.setAttribute(item, options[item]);
+			//console.log({ item: item, value: options[item] });
+		}
+	}
+
+	let list = filterListing;
+	for (const method in list) {
+
+		let optElem = document.createElement("option");
+		optElem.textContent = list[method].name;
+		optElem.title = list[method].name + " : \n" + list[method].description;
+		optElem.value = method;
+		selectElem.appendChild(optElem);
+	}
+
+	selectElem.value = defaultFilter;
+
+	parent.appendChild(selectElem);
+}
+
+// Do text analysis and print results
+function processForm() {
+	let text = document.getElementById("input").value;
+	let lines = text.split("\n");
+
+	// reset output area
+	document.getElementById("ouput").value = "";
+	document.getElementById("text-analysis").innerHTML = "";
+
+	let filteredLines = [];
+
+	for (const line of lines) {
+		let filteredLine = processSrtLine(line);
+		//console.log({line, filteredLine});
+
+		filteredLines.push(filteredLine);
+	}
+
+	document.getElementById("ouput").value = filteredLines.join("\n");
+
+
+	document.getElementById("output-area").classList.remove("collapse");
+	document.getElementById("btn-process").value = document.getElementById("btn-process").dataset.originalValue;	
+}
+
+// For some documentation about SRT, timed test and close captioning check:
+//  https://en.wikipedia.org/wiki/SubRip
+//  https://en.wikipedia.org/wiki/Timed_text
+//  https://en.wikipedia.org/wiki/Closed_captioning
+//  https://en.wikipedia.org/wiki/WebVTT
+
+function processSrtLine(line) {
+	//console.log({line});
+
+	if (line == null) {
+		throw "Error. processSrtLine(null)";
+	}
+	else if (line === "") {
+		return "";
+	}
+	// line with item number
+	else if (line.match(/^\s*\d+\s*$/)) {
+		//console.log({t:"number line", line})
+		return line;
+	}
+	// line with time
+	// TIME --> TIME
+	// TIME = numbers + comma + colon + period and whitespaces (around time)
+	else if (line.match(/^[0-9,:\.\s]+-->[ 0-9,:\.\s]+$/)) {
+		//console.log({t:"time line", line})
+		return line;
+	}
+	// finally line with text to filter	
+	else {
+		return filterLine(line);
+	}
+}
+
+function filterLine(line) {
+	let filter = document.getElementById("filter-type").value;
+	//console.log(filterListing[filter].run(line));
+	return filterListing[filter].run(line);
+}
+
+
+// Some filters can use difficulty settings
+let filterDifficulty = 2; // 3 = hard, 2 = normal, 1.5 = easy
+
+function setFilterDifficulty(value) {
+	if (!value) {             // no value = reset difficulty to normal
+		filterDifficulty = 2; // 2 = normal difficulty
+	}
+	else {
+		filterDifficulty = value;
+	}
+}
+
+
+
+// general filter for languages with latin alphabet that we do not handle more specifically
+function generalLatin(s) {
+	let transformed;
+
+	if (!s) { return s; } // sometimes s is empty string
+
+	// Handle some special characters at the beginning
+	// these are characters often found at subtitle beginning, we keep them unchanged and transform rest of the string
+	let startingCharacters = ["-", "♪", " ", "'", ",", ".", "\"", "("];
+
+	if (startingCharacters.includes(s.charAt(0))) {
+		transformed = s.charAt(0) + generalLatin(s.substring(1));
+	}
+
+	// Handle subtitle markup
+	// Sometimes subtitles contains html markup, usualy <b>, <i>, <u> and </b>, </i>, </u>.
+	// Keep text inside <> without change and transform the rest
+	// Note: there can be more tags in one text, and might not necesary be in pairs
+	else if (s.match(/<[^>]+>/)) { // looking for < anything in angle brackets >
+	
+		// we need to find all <tags>, for which we use global string.replace with callback function
+		transformed = s.replace(/([^<>]*)(<[^<>]+>)([^<>]*)/g,
+			function(m,p1,p2,p3,o,s,g) { // m contains one whole match, p1 text before <angle bracket>, p2 text inside <angle bracket> including brackets, p3 text after <angle bracket>
+				//console.log({m:m,p1:p1,p2:p2,p3:p3,o:o,s:s,g:g});
+				return generalLatin(p1) + p2 + generalLatin(p3);
+			}
+		);
+	}
+
+	// Handle [text in brackets]
+	// It this usually comment, that is not part of speach
+	// Keep all text inside brackets without change and transform the rest
+
+	else if (s.match(/\[[^\]]+\]/)) { // looking for [ anything in square brackets ]
+		let results = s.match(/(.*)(\[[^\]]+\])(.*)/); // results[1] contains text before [backets], results[2] containts text inside [backets] including brackets, results[3] text after [backets]
+		transformed = generalLatin(results[1]) + results[2] + generalLatin(results[3]);
+	}
+	else
+	{
+		// Finally here, decide which words to delete
+		// Split text into fragments between spaces (usually words, but also numbers, punctuations etc.) and check every fragment
+		// \s is can be any type of space character including tabulator. But most usually it is space. At least in subtitles.
+		let fragments = s.split(/\s/);
+		//console.log(fragments.length);
+
+		// Coeficient, who large part of the text to delete
+		let coef = filterDifficulty; // 3 = hard, 2 = normal, 1.5 = easy
+		let nFragmentsToKeep =  Math.round(fragments.length / coef);
+		transformed = fragments[0]; // start 1st fragment
+
+		for (let i = 1; i < fragments.length; i++) {
+			//console.log( fragments[i] );
+
+			// Keep words/fragments in the 1st subtitle part
+			if (i < nFragmentsToKeep) {
+				transformed = transformed + " " + fragments[i];
+			}
+			// Delete words/fragments in the 2nd part
+			else {
+				// But check for common non-letter characters, like punctuation, we want to display these
+				// But do not include apostrophe, because this looks disturbing _'_ _ and is often in English subtitles
+
+				// "dash" must be in the first array field, to correctly form the reg. exp.
+				let specialCharacters = ["-", "♪", "(", ")", ",", "\"", ":", ";", ".", "?", "!", "¡", "¿"];
+				
+				let re = new RegExp("[" + specialCharacters.join("") + "]");        // create matching regexp like: /[-♪()]/
+				let re2 = new RegExp("[^" + specialCharacters.join("") + "]", "g"); // create negative global regexp like: /[^-♪()]/g
+
+				//console.log({re, re2});
+
+				if (fragments[i].match(re)) {
+					// fragment contains special characters that we want to keep
+					let replaced = fragments[i].replace(re2, "_"); // keep special characters, replace all other characters by underscores
+					transformed = transformed + " " + replaced;
+				}
+				else {
+					transformed = transformed + " " + fragments[i].replace(/./g, "_"); // replace all characters by underscores
+				}
+			}
+		}
+	}			
+
+	return transformed;
+}
+
+// This is a proxy around generalLatin filter, just make more easy settings
+function generalLatinEasy(s) {
+
+	setFilterDifficulty(1.5);
+	return generalLatin(s);
+}
+
+// This is a proxy around generalLatin filter, with normal settings
+function generalLatinNormal(s) {
+
+	setFilterDifficulty(2);
+	return generalLatin(s);
+}
+
+// This is a proxy around generalLatin filter, just make harder settings
+function generalLatinHard(s) {
+
+	setFilterDifficulty(3);
+	return generalLatin(s);
+}
+
+
+</script>
