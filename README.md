@@ -4,7 +4,7 @@ Learn foreign languages during watching movies. But do not use common subtitles,
 
 Works for most languages.
 
-- [Subfilter for SRT files](convert-srt.html)
+- [Subfilter for SRT files](https://subfilter.met.cz/convert-srt.html)
 - [Subfilter for Netflix](https://github.com/met/subfilter/wiki)
 
 ![Screenshot of Subfilter User interface](https://github.com/met/subfilter/raw/master/img/subfilter-ui.png)
